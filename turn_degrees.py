@@ -19,9 +19,10 @@ TURN_DEGREES = 90   # how far to turn | positive = right, negative = left
 LEFT_PORT  = hub.port.A
 RIGHT_PORT = hub.port.E
 
-FAST_SPEED = 400    # speed during the main part of the turn
-SLOW_SPEED = 100    # speed for the final 30 degrees
-SLOW_ZONE  = 30     # degrees before target where we switch to slow speed
+FAST_SPEED  = 400   # speed during the main part of the turn
+SLOW_SPEED  = 100   # speed for the final 30 degrees
+SLOW_ZONE   = 30    # degrees before target where we switch to slow speed
+STOP_EARLY  = 1     # stop this many degrees before target to compensate for momentum
 
 
 # -----------------------------------------------------------------------------
@@ -92,8 +93,8 @@ def turn(degrees):
     while abs(read_yaw()) < abs_target - SLOW_ZONE:
         drive_turn(FAST_SPEED, direction)
 
-    # Phase 2 — turn slow until we reach (or pass) the target
-    while abs(read_yaw()) < abs_target:
+    # Phase 2 — turn slow, stop STOP_EARLY degrees before target to account for momentum
+    while abs(read_yaw()) < abs_target - STOP_EARLY:
         drive_turn(SLOW_SPEED, direction)
 
     stop()
