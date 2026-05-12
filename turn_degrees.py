@@ -19,10 +19,9 @@ TURN_DEGREES = 90   # how far to turn | positive = right, negative = left
 LEFT_PORT  = hub.port.A
 RIGHT_PORT = hub.port.E
 
-FAST_SPEED = 400    # speed (deg/sec) during the main part of the turn
-SLOW_SPEED = 100    # speed (deg/sec) for the final 30 degrees
+FAST_SPEED = 400    # speed during the main part of the turn
+SLOW_SPEED = 100    # speed for the final 30 degrees
 SLOW_ZONE  = 30     # degrees before target where we switch to slow speed
-STOP_ZONE  = 1      # degrees before target where we stop
 
 
 # -----------------------------------------------------------------------------
@@ -32,7 +31,7 @@ STOP_ZONE  = 1      # degrees before target where we stop
 #  the raw value directly.
 # -----------------------------------------------------------------------------
 
-_prev_raw = 0.0
+_prev_raw  = 0.0
 _total_yaw = 0.0
 
 def reset_yaw():
@@ -43,12 +42,11 @@ def reset_yaw():
     _total_yaw = 0.0
 
 def read_yaw():
-    """Return total degrees turned since last reset_yaw() call.
-    Positive = right, negative = left. No wrap-around limit."""
+    """Return total degrees turned since last reset_yaw(). No wrap-around limit."""
     global _prev_raw, _total_yaw
     raw   = hub.motion_sensor.tilt_angles()[0] / 10
     delta = raw - _prev_raw
-    # Detect and correct wrap-around crossing ±180°
+    # Correct for wrap-around crossing ±180°
     if   delta >  180: delta -= 360
     elif delta < -180: delta += 360
     _total_yaw += delta
@@ -67,8 +65,8 @@ def setup():
 
 def drive_turn(speed, direction):
     """Spin the robot in place.
-    direction: +1 = right, -1 = left
-    speed: motor speed in deg/sec (always positive)
+    direction: +1 = right,  -1 = left
+    speed: always a positive number
     """
     motor_pair.move_tank(motor_pair.PAIR_1,
                           direction * speed,
@@ -79,29 +77,23 @@ def stop():
     motor_pair.stop(motor_pair.PAIR_1)
 
 def turn(degrees):
-    """Turn the robot exactly 'degrees' degrees and stop.
+    """Turn the robot exactly 'degrees' degrees then stop.
+    Positive = right turn,  negative = left turn.
 
-    Positive degrees = right turn, negative degrees = left turn.
-    Phase 1 (fast): runs at FAST_SPEED until SLOW_ZONE degrees before target.
-    Phase 2 (slow): runs at SLOW_SPEED until STOP_ZONE degrees before target.
+    Keeps turning until abs(yaw) exceeds the target — no complex conditions.
+    Switches from fast to slow speed in the final SLOW_ZONE degrees.
     """
     direction  = 1 if degrees > 0 else -1
     abs_target = abs(degrees)
 
     reset_yaw()
 
-    # Phase 1 — fast approach
-    while True:
-        turned = direction * read_yaw()          # positive = moving toward target
-        if turned >= abs_target - SLOW_ZONE:
-            break
+    # Phase 1 — turn fast until we are SLOW_ZONE degrees away from target
+    while abs(read_yaw()) < abs_target - SLOW_ZONE:
         drive_turn(FAST_SPEED, direction)
 
-    # Phase 2 — slow final approach
-    while True:
-        turned = direction * read_yaw()
-        if turned >= abs_target - STOP_ZONE:
-            break
+    # Phase 2 — turn slow until we reach (or pass) the target
+    while abs(read_yaw()) < abs_target:
         drive_turn(SLOW_SPEED, direction)
 
     stop()
