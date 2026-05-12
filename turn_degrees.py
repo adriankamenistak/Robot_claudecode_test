@@ -3,40 +3,53 @@ import motor_pair
 
 # =============================================
 #  SET YOUR TURN ANGLE HERE
-#  Positive = right turn, Negative = left turn
+#  Positive = right,  Negative = left
 # =============================================
 TURN_DEGREES = 90
 
-# --- Config (don't need to change these) ---
 LEFT_PORT  = hub.port.A
 RIGHT_PORT = hub.port.E
-MAX_SPEED  = 400   # max turn speed (degrees/sec)
-MIN_SPEED  = 150   # min speed so motors don't stall near target
-KP         = 4.0   # raise if it undershoots, lower if it overshoots
-TOLERANCE  = 3     # stop when within this many degrees of target
+FAST_SPEED = 400   # speed during phase 1 (far from target)
+SLOW_SPEED = 100   # speed during phase 2 (last 30 degrees)
 
-# --- Setup ---
 motor_pair.pair(motor_pair.PAIR_1, LEFT_PORT, RIGHT_PORT)
 hub.motion_sensor.reset_yaw()
 
-# --- Turn loop ---
-# P-controller: speed is proportional to remaining error.
-# Left forward + right backward = turn right (positive yaw on SPIKE Prime).
-# If your robot turns the WRONG direction, flip the sign of TURN_DEGREES.
+# --- Unwrapped yaw tracker ---
+# tilt_angles()[0] wraps at ±180°, which breaks turns near 0°, 30°, or >170°.
+# Instead we accumulate small deltas each loop so wrap-around is never an issue.
+prev_raw    = hub.motion_sensor.tilt_angles()[0] / 10
+total_yaw   = 0.0
+
+def read_yaw():
+    global prev_raw, total_yaw
+    raw   = hub.motion_sensor.tilt_angles()[0] / 10
+    delta = raw - prev_raw
+    if   delta >  180: delta -= 360   # crossed +180 → -180 boundary
+    elif delta < -180: delta += 360   # crossed -180 → +180 boundary
+    total_yaw += delta
+    prev_raw   = raw
+    return total_yaw
+
+direction  = 1 if TURN_DEGREES > 0 else -1
+abs_target = abs(TURN_DEGREES)
+
+# Phase 1: fast, until 30° before target
 while True:
-    yaw   = hub.motion_sensor.tilt_angles()[0] / 10  # decidegrees -> degrees
-    error = TURN_DEGREES - yaw
-
-    if abs(error) < TOLERANCE:
+    turned = read_yaw()
+    if direction * turned >= abs_target - 30:
         break
+    motor_pair.move_tank(motor_pair.PAIR_1,
+                          direction * FAST_SPEED,
+                         -direction * FAST_SPEED)
 
-    speed = int(error * KP)
-    speed = max(-MAX_SPEED, min(MAX_SPEED, speed))
-
-    # Enforce minimum speed so motors don't stall
-    if   speed > 0: speed = max(speed,  MIN_SPEED)
-    elif speed < 0: speed = min(speed, -MIN_SPEED)
-
-    motor_pair.move_tank(motor_pair.PAIR_1, speed, -speed)
+# Phase 2: slow, until 1° before target
+while True:
+    turned = read_yaw()
+    if direction * turned >= abs_target - 1:
+        break
+    motor_pair.move_tank(motor_pair.PAIR_1,
+                          direction * SLOW_SPEED,
+                         -direction * SLOW_SPEED)
 
 motor_pair.stop(motor_pair.PAIR_1)
